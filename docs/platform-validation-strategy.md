@@ -4,11 +4,11 @@
 **Document type:** validation strategy (implemented platform)  
 **Status:** platform validation exists under `tests/` and `tests/platform/`. Live paths are opt-in (`@pytest.mark.live`).
 
-This document describes how to **validate** the platform that already exists. Counts and live outcomes below are copied from `README.md`. Do not invent additional results.
+This document describes how to **validate** the platform that already exists. Counts and live outcomes below are copied from `README.md`. Do not invent additional results. Attribution of those live suite outcomes to commit `c095dd5` is **UNKNOWN / TO VERIFY**.
 
-Current Phase 2 regression baseline (`pytest tests -q`; excludes root Phase 1 files; `pytest.ini` applies `-m "not live"` and `-p no:deepeval`):
+A previously documented Phase 2 regression baseline (`pytest tests -q`; excludes root Phase 1 files; `pytest.ini` applies `-m "not live"` and `-p no:deepeval`) was:
 
-**392 passed, 35 deselected, 1 warning** in 19.30s.
+**392 passed, 35 deselected, 1 warning** in 19.30s. That count was not re-measured for this documentation update. The latest reported focused offline contract suite is **38 passed** after the Langfuse agent OpenRouter judge fix.
 
 `python -m pytest` also collects four unmarked Phase 1 root tests. Those are not `@pytest.mark.live` and they are not `EvaluationRunner` tests. With the current OpenRouter `.env` they fail 401 (`Missing Authentication header`). Last measured full collection: **395 passed, 4 failed, 35 deselected, 1 warning** in 33.67s. That is a Phase 1 provider-auth issue, not a Phase 2 regression.
 
@@ -103,16 +103,19 @@ Already proven with doubles or local deterministic code (do not treat as live-pr
 - `run()` records `last_run`. `run_many` keeps per-trace groups; empty list → `ValueError`.
 - Synthetic PASS and FAIL for policy and gate.
 
-Live through `EvaluationRunner` (README final live MVP matrix):
+Live through `EvaluationRunner` (README reported matrix; not re-executed here; not verified against `c095dd5`):
 
-| Path | Live through EvaluationRunner | Result |
+| Path | Live through EvaluationRunner | Reported result |
 |---|---|---|
-| Langfuse OpenAI Agent | Tool Correctness; Final State | **Pass**, including expected-negative cases |
-| Playwright MCP | Tool Correctness; MCP Execution Health; Final State | **Pass**, including expected-negative cases |
-| Langfuse user-feedback chatbot | Turn Relevancy; per-turn G-Eval | Turn Relevancy **1.0**; G-Eval **0.8 / 0.8**; QualityGate **pass** |
-| External RAG Faithfulness | SUT extraction, then RAGAS Faithfulness | **JUDGE_BLOCKED / NOT SCORED** |
+| External RAG Faithfulness (Together AI RAGAS suite, 3 tests) | SUT extraction, then RAGAS Faithfulness | **Passed** |
+| DeepEval OpenRouter suite | 18 selected smoke / through-runner tests | **Passed** |
+| Playwright MCP | Tool Correctness; MCP Execution Health; Final State | **Passed**, including expected-negative cases |
+| Langfuse OpenAI Agent | Tool Correctness (OpenRouter judge); Final State | **Passed**, including expected-negative cases |
+| Langfuse user-feedback chatbot | Turn Relevancy; per-turn G-Eval (`>= 0.80`) | Both tests **executed** (0 skipped). HTTP 200. Langfuse observations retrieved. Turn Relevancy **passed**. G-Eval **failed** with score **0.6** against threshold **0.8**. QualityGate **fail**. Unresolved; threshold not lowered. |
 
-Agent GENERATION G-Eval and non-faithfulness RAG maps remain unit-tested only.
+Do not claim the entire `live-tests` workflow passed. Agent GENERATION G-Eval and non-faithfulness RAG maps remain unit-tested only.
+
+An earlier OpenRouter RAGAS Faithfulness attempt was **JUDGE_BLOCKED / NOT SCORED**. That is a historical failure-domain example, not the reported Together AI suite outcome.
 
 ---
 
@@ -134,7 +137,7 @@ Agent GENERATION G-Eval and non-faithfulness RAG maps remain unit-tested only.
 
 Command: `pytest tests -q`  
 Purpose: no regression of Phase 2 contracts.  
-Measured baseline: **392 passed, 35 deselected, 1 warning** in 19.30s. The warning is a DeepEval `HallucinationMetric` score-direction notice; platform hallucination scoring is already higher-is-better with policy `>= 0.8`.
+Previously documented baseline: **392 passed, 35 deselected, 1 warning** in 19.30s (not re-measured here). Latest reported focused offline contract suite: **38 passed**. The warning is a DeepEval `HallucinationMetric` score-direction notice; platform hallucination scoring is already higher-is-better with policy `>= 0.8`.
 
 ### Layer B — Cross-boundary composition (implemented)
 
@@ -158,19 +161,19 @@ Re-assert, do not redesign:
 - Evaluator exception → no successful scored run for that call.
 - `run_many([])` → `ValueError`.
 
-### Layer E — Live RAGAS Faithfulness through the runner (attempted)
+### Layer E — Live RAGAS Faithfulness through the runner
 
-Live DeepEval and RAGAS evaluation paths are configured for OpenRouter. The final RAGAS Faithfulness run was judge-blocked by `LLMDidNotFinishException`.
+The current opt-in GitHub Actions RAGAS job uses Together AI (`RAGAS_LLM_PROVIDER=together`). That suite is **reported as passed** (3 selected tests). It is not verified against commit `c095dd5`.
 
-**RAG diagnostic lesson.** The external RAG API returned **HTTP 200** with a valid answer and **4** retrieved contexts. The downstream RAGAS judge then failed with `LLMDidNotFinishException` (`max_tokens`). That is failure-domain isolation: the SUT succeeded; the judge did not. No score and no QualityGate. This is not an RAG application failure and not a Faithfulness score.
+**Historical RAG diagnostic lesson.** An earlier OpenRouter RAGAS Faithfulness attempt was judge-blocked by `LLMDidNotFinishException` (`max_tokens`) after the external RAG API returned **HTTP 200** with a valid answer and **4** retrieved contexts. That is failure-domain isolation: the SUT succeeded; that judge did not. Record `JUDGE_BLOCKED / NOT SCORED`, not FAIL `0.0`. It is not the reported Together AI suite outcome.
 
 Do **not** assert production quality of the RAG demo. Do **not** claim this replaces Phase 1’s five metrics.
 
 ### Layer F — Live DeepEval (implemented for the measured paths)
 
-Pin: `deepeval==4.2.6`. Pytest plugin remains disabled (`-p no:deepeval`). Live tests stay `live`-marked. Judge config: OpenRouter `meta-llama/llama-3.3-70b-instruct` via `DEEPEVAL_JUDGE_MODEL` / `OPENROUTER_API_KEY` / `OPENAI_BASE_URL`.
+Pin: `deepeval==4.2.6`. Pytest plugin remains disabled (`-p no:deepeval`). Live tests stay `live`-marked. Judge config: OpenRouter `meta-llama/llama-3.3-70b-instruct` via `DEEPEVAL_JUDGE_MODEL` / `OPENROUTER_API_KEY` / `OPENAI_BASE_URL`. `live-tests.yml` exposes five independently selectable jobs; all checkboxes default to `false`.
 
-Measured live through the runner: Agent Tool Correctness + Final State; MCP Tool Correctness + Execution Health + Final State; chatbot Turn Relevancy + per-turn G-Eval. Agent GENERATION G-Eval is unit-tested only.
+Reported live through the runner: DeepEval suite (18); Agent Tool Correctness + Final State; MCP Tool Correctness + Execution Health + Final State; chatbot Turn Relevancy **pass** and per-turn G-Eval **0.6 < 0.8** (unresolved). Agent GENERATION G-Eval is unit-tested only. The G-Eval threshold remains `>= 0.80`.
 
 ### Layer G — Phase 1 live suite (historical)
 
@@ -196,8 +199,10 @@ There is no combined score across the four SUT paths.
 - Remaining Phase 1 RAGAS metrics as Phase 2 adapters.
 - Live Langfuse G-Eval for the OpenAI Agent GENERATION path.
 - Live scores for non-faithfulness RAG maps.
-- A successful RAGAS Faithfulness score (latest run is **JUDGE_BLOCKED / NOT SCORED**).
-- CI/CD blocking on `GateDecision`.
+- A passing Langfuse Chatbot G-Eval (latest reported score is **0.6** against threshold **0.8**; unresolved).
+- That the reported live suite outcomes were measured on commit `c095dd5` (**UNKNOWN / TO VERIFY**).
+- A combined / all-boxes `live-tests` workflow pass.
+- CI/CD blocking on `GateDecision` as a dedicated plugin (jobs fail on pytest plus JUnit `--min-tests` collection/skip gates).
 - Cost, latency, tokens, ROI.
 - Dataset-level pass rate or average / combined platform score.
 - CLI coverage beyond the P0 MCP demo.
@@ -206,10 +211,10 @@ There is no combined score across the four SUT paths.
 
 ## 7. Recommended execution order
 
-1. `pytest tests -q` is the merge gate for deterministic Phase 2 work (392 / 35 deselected / 1 warning today).
-2. `pytest -m live --override-ini="addopts=-p no:deepeval"` for live platform tests when configured.
+1. `pytest tests -q` is the merge gate for deterministic Phase 2 work (previously documented 392 / 35 deselected / 1 warning; latest reported focused contract suite 38 passed).
+2. Select one or more `live-tests.yml` checkboxes, or run `pytest -m live --override-ini="addopts=-p no:deepeval"` locally when configured.
 3. Do not treat `python -m pytest` Phase 1 401s as a Phase 2 regression.
-4. Leave Phase 1 root tests and Mixtral defaults untouched.
+4. Leave Phase 1 root tests, Mixtral defaults, and the chatbot G-Eval `>= 0.80` threshold untouched.
 
 ---
 
@@ -219,9 +224,10 @@ There is no combined score across the four SUT paths.
 |---|---|
 | Dual paths (Phase 1 pytest vs runner) | CI must say which command is “platform” vs “legacy live.” |
 | Phase 1 401 on OpenRouter | Full `python -m pytest` stays red unless those unmarked tests skip or use a matching Phase 1 host. Do not silently rewrite Phase 1 defaults. |
-| RAGAS Faithfulness judge block | A live RAG path can extract successfully and still produce no score. Record `JUDGE_BLOCKED / NOT SCORED`, not FAIL `0.0`. |
-| Empty config → gate PASS | A miswired CI job with `evaluations=[]` would pass; CI design (later) must not treat that as a quality bar. |
-| No combined platform score | Four path gates must stay independent. |
+| Historical RAGAS Faithfulness judge block | A live RAG path can extract successfully and still produce no score. Record `JUDGE_BLOCKED / NOT SCORED`, not FAIL `0.0`. Do not overwrite the reported Together AI pass with that history. |
+| Chatbot G-Eval 0.6 vs 0.8 | Connectivity and tracing can succeed while the gate fails. Do not lower the 0.80 threshold or skip the test to go green. |
+| Empty config → gate PASS | A miswired CI job with `evaluations=[]` would pass; JUnit `--min-tests` is the collection/skip safeguard, not a substitute for `QualityGate`. |
+| No combined platform score | Four path gates and five live jobs must stay independent. |
 
 ---
 
