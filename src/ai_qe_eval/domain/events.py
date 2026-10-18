@@ -1,4 +1,4 @@
-"""Minimal EvaluationTrace event representation (P2-02).
+"""Minimal event representation (P2-02).
 
 Events are ordered execution facts, not evaluator results.
 Typed event classes (LLMEvent, ToolCall, …) are deferred.

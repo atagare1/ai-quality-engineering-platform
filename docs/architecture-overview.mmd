@@ -1,0 +1,103 @@
+%% AI Quality Engineering Evaluation Platform — executive overview
+%% Companion to docs/architecture-diagram.mmd (detailed technical reference).
+%% Source of truth: docs/architecture.md and src/ai_qe_eval.
+%% Intended render: landscape 16:9. MVP; not a results or production claim.
+
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontFamily": "Segoe UI, Helvetica, Arial, sans-serif",
+    "fontSize": "16px",
+    "primaryTextColor": "#1b2430",
+    "lineColor": "#5b6b7c",
+    "clusterBkg": "#f7f8fa",
+    "clusterBorder": "#9aa7b5"
+  },
+  "flowchart": {
+    "htmlLabels": true,
+    "curve": "basis",
+    "nodeSpacing": 20,
+    "rankSpacing": 48,
+    "padding": 10
+  }
+}}%%
+
+flowchart LR
+  subgraph S1["1. Representative SUTs"]
+    direction TB
+    rag["RAG application"]
+    chat["Chatbot"]
+    agent["Tool-using agent"]
+    mcp["Playwright MCP workflow"]
+  end
+
+  subgraph S2["2. Evidence capture"]
+    direction TB
+    cap["SUT-specific adapters"]
+    evd["Response · trace<br/>tool calls · app state"]
+  end
+
+  subgraph S3["3. Reusable evaluation core"]
+    direction TB
+    cfg["EvaluationConfig"]
+    run["EvaluationRunner"]
+    plug["Pluggable evaluator map"]
+  end
+
+  subgraph S4["4. Evaluation methods"]
+    direction TB
+    det["Deterministic assertions"]
+    ragas["RAGAS evaluation"]
+    deep["DeepEval / G-Eval"]
+    tool["Tool-correctness evaluation"]
+  end
+
+  subgraph S5["5. Results and quality gate"]
+    direction TB
+    res["EvaluationResult<br/>individual scores"]
+    norm["normalize_many<br/>no combined score"]
+    pol["QualityPolicy<br/>per-metric threshold"]
+    gate["QualityGate<br/>any failed decision<br/>fails that path"]
+  end
+
+  subgraph S6["6. Execution and validation"]
+    direction TB
+    off["Offline Pytest<br/>framework contracts"]
+    live["Live GitHub Actions<br/>separately selectable"]
+    demo["Interactive MCP demo<br/>separate path"]
+  end
+
+  note["Representative SUTs; live evaluation depends on provider configuration and external services."]
+
+  rag --> cap
+  chat --> cap
+  agent --> cap
+  mcp --> cap
+  cap --> evd --> cfg
+  cfg --> run
+  plug --> run
+  det -.-> plug
+  ragas -.-> plug
+  deep -.-> plug
+  tool -.-> plug
+  run --> res --> norm --> pol --> gate
+  gate --> off
+  gate --> live
+  gate --> demo
+  S6 --- note
+
+  classDef sut fill:#1e3a5f,stroke:#16304d,color:#f4f7fb
+  classDef cap fill:#2f5d6e,stroke:#244854,color:#f4f7fb
+  classDef core fill:#335c81,stroke:#274863,color:#f4f7fb
+  classDef method fill:#6b5a3e,stroke:#544630,color:#fbf7ef
+  classDef result fill:#3d5a45,stroke:#2f4636,color:#f4f7fb
+  classDef exec fill:#4a5560,stroke:#3a434c,color:#f4f7fb
+  classDef noteCls fill:#f4f6f8,stroke:#9aa7b5,color:#1b2430
+
+  class rag,chat,agent,mcp sut
+  class cap,evd cap
+  class cfg,run,plug core
+  class det,ragas,deep,tool method
+  class res,norm,pol,gate result
+  class off,live,demo exec
+  class note noteCls

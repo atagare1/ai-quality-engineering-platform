@@ -1,10 +1,11 @@
 """P2-09 RAGAS Faithfulness evaluator adapter.
 
-Maps EvaluationTrace into RAGAS 0.2.15 Faithfulness (SingleTurnSample +
-single_turn_score) and returns one EvaluationResult.
+Maps caller-supplied input, output, and retrieval into RAGAS 0.2.15
+Faithfulness (SingleTurnSample + single_turn_score) and returns one
+EvaluationResult.
 
 Does not apply thresholds or PASS/FAIL. Does not auto-register capabilities.
-Other RAGAS metrics are not implemented here.
+Does not read EvaluationTrace. Other RAGAS metrics are not implemented here.
 """
 
 from __future__ import annotations
@@ -15,7 +16,6 @@ from ragas import SingleTurnSample
 from ragas.metrics import Faithfulness
 
 from ai_qe_eval.domain.result import EvaluationResult
-from ai_qe_eval.domain.trace import EvaluationTrace
 
 FAITHFULNESS_METRIC = "faithfulness"
 RAGAS_EVALUATOR_NAME = "ragas"
@@ -35,11 +35,13 @@ def _retrieved_contexts(retrieval: list[Any] | None) -> list[str]:
     return contexts
 
 
-def _trace_to_single_turn_sample(trace: EvaluationTrace) -> SingleTurnSample:
+def _to_single_turn_sample(
+    *, input: Any, output: Any, retrieval: list[Any] | None
+) -> SingleTurnSample:
     return SingleTurnSample(
-        user_input=trace.input,
-        response=trace.output,
-        retrieved_contexts=_retrieved_contexts(trace.retrieval),
+        user_input=input,
+        response=output,
+        retrieved_contexts=_retrieved_contexts(retrieval),
     )
 
 
@@ -73,10 +75,14 @@ class RAGASFaithfulnessEvaluator:
 
     def evaluate(
         self,
-        trace: EvaluationTrace,
+        input: Any,
+        output: Any,
+        retrieval: list[Any] | None,
         configuration: Any | None = None,
     ) -> list[EvaluationResult]:
-        sample = _trace_to_single_turn_sample(trace)
+        sample = _to_single_turn_sample(
+            input=input, output=output, retrieval=retrieval
+        )
         score = self._metric().single_turn_score(sample)
         return [
             EvaluationResult(

@@ -74,7 +74,6 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.1.1
 python-multipart==0.0.20
 pytz==2025.2
-pywin32==310
 PyYAML==6.0.2
 ragas==0.2.15
 referencing==0.36.2
@@ -106,7 +105,8 @@ xxhash==3.5.0
 yarl==1.20.1
 zope.interface==7.2
 zstandard==0.23.0
-deepeval==2.7.0
+deepeval==4.2.6
+langfuse==4.16.0
 rich==13.9.4
 markdown-it-py==4.2.0
 mdurl==0.1.2

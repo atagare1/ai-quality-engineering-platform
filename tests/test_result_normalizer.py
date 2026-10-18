@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from ai_qe_eval.domain.result import EvaluationResult
-from ai_qe_eval.domain.trace import EvaluationTrace
 from ai_qe_eval.evaluators.deterministic import DeterministicEvaluator
 from ai_qe_eval.normalization.result_normalizer import normalize, normalize_many
 
@@ -187,14 +186,7 @@ def test_original_result_and_raw_result_are_not_mutated():
 
 
 def test_evaluator_to_normalizer_contract_does_not_change_meaning():
-    trace = EvaluationTrace(
-        trace_id="trace-norm",
-        scenario_type="llm",
-        input="q",
-        output="23",
-        expected="23",
-    )
-    before = DeterministicEvaluator().evaluate(trace)[0]
+    before = DeterministicEvaluator().evaluate("23", "23")[0]
     after = normalize(before)
     assert after.metric == before.metric
     assert after.evaluator == before.evaluator

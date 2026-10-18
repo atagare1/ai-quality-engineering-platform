@@ -13,6 +13,7 @@ import pytest
 
 from ai_qe_eval.domain.result import EvaluationResult
 from ai_qe_eval.policy.quality_policy import PolicyDecision, QualityPolicy
+from utils import metric_threshold
 
 _POLICY_SOURCE = (
     Path(__file__).resolve().parents[1]
@@ -80,6 +81,81 @@ def test_score_greater_than_or_equal_boundary_passes():
     decision = policy.apply(_result("faithfulness", 0.80))
     assert decision.passed is True
     assert decision.score == 0.80
+
+
+def test_hallucination_policy_treats_higher_alignment_as_pass(monkeypatch):
+    monkeypatch.delenv("RAGAS_THRESHOLD_HALLUCINATION", raising=False)
+    threshold = metric_threshold("hallucination")
+    policy = QualityPolicy(
+        metric="hallucination",
+        operator=">=",
+        threshold=threshold,
+    )
+    aligned = policy.apply(_result("hallucination", threshold, evaluator="deepeval"))
+    less_aligned = policy.apply(
+        _result("hallucination", threshold - 0.01, evaluator="deepeval")
+    )
+    assert aligned.passed is True
+    assert less_aligned.passed is False
+    assert less_aligned.score < threshold
+
+
+def test_contextual_precision_policy_uses_configured_threshold(monkeypatch):
+    monkeypatch.delenv("RAGAS_THRESHOLD_CONTEXTUAL_PRECISION", raising=False)
+    threshold = metric_threshold("contextual_precision")
+    policy = QualityPolicy(
+        metric="contextual_precision",
+        operator=">=",
+        threshold=threshold,
+    )
+    at_threshold = policy.apply(
+        _result("contextual_precision", threshold, evaluator="deepeval")
+    )
+    below_threshold = policy.apply(
+        _result("contextual_precision", threshold - 0.01, evaluator="deepeval")
+    )
+    assert at_threshold.passed is True
+    assert below_threshold.passed is False
+    assert below_threshold.score < threshold
+
+
+def test_contextual_recall_policy_uses_configured_threshold(monkeypatch):
+    monkeypatch.delenv("RAGAS_THRESHOLD_CONTEXTUAL_RECALL", raising=False)
+    threshold = metric_threshold("contextual_recall")
+    policy = QualityPolicy(
+        metric="contextual_recall",
+        operator=">=",
+        threshold=threshold,
+    )
+    at_threshold = policy.apply(
+        _result("contextual_recall", threshold, evaluator="deepeval")
+    )
+    below_threshold = policy.apply(
+        _result("contextual_recall", threshold - 0.01, evaluator="deepeval")
+    )
+    assert at_threshold.passed is True
+    assert below_threshold.passed is False
+    assert below_threshold.score < threshold
+
+
+def test_contextual_relevancy_policy_uses_configured_threshold(monkeypatch):
+    monkeypatch.delenv("RAGAS_THRESHOLD_CONTEXTUAL_RELEVANCY", raising=False)
+    threshold = metric_threshold("contextual_relevancy")
+    policy = QualityPolicy(
+        metric="contextual_relevancy",
+        operator=">=",
+        threshold=threshold,
+    )
+    at_threshold = policy.apply(
+        _result("contextual_relevancy", threshold, evaluator="deepeval")
+    )
+    below_threshold = policy.apply(
+        _result("contextual_relevancy", threshold - 0.01, evaluator="deepeval")
+    )
+    assert at_threshold.passed is True
+    assert at_threshold.threshold == threshold
+    assert below_threshold.passed is False
+    assert below_threshold.score < threshold
 
 
 def test_score_below_threshold_fails():

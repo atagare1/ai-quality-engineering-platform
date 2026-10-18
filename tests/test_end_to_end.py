@@ -13,7 +13,6 @@ import pytest
 from ai_qe_eval.domain.config import EvaluationConfig
 from ai_qe_eval.domain.registry import EvaluationCapability, EvaluationRegistry
 from ai_qe_eval.domain.result import EvaluationResult
-from ai_qe_eval.domain.trace import EvaluationTrace
 from ai_qe_eval.evaluators.deterministic import DeterministicEvaluator
 from ai_qe_eval.gate.quality_gate import GateDecision, QualityGate
 from ai_qe_eval.normalization.result_normalizer import normalize_many
@@ -21,14 +20,8 @@ from ai_qe_eval.policy.quality_policy import PolicyDecision, QualityPolicy
 from ai_qe_eval.runner.evaluation_runner import EvaluationRunner
 
 
-def _trace() -> EvaluationTrace:
-    return EvaluationTrace(
-        trace_id="e2e-001",
-        scenario_type="qa",
-        input="What is the capital of France?",
-        output="Paris",
-        expected="Paris",
-    )
+def _request(*names: str, output: str = "Paris", expected: str = "Paris") -> dict:
+    return {name: {"args": [output, expected], "kwargs": {}} for name in names}
 
 
 def _result(
@@ -50,11 +43,11 @@ def _result(
 class RecordingEvaluator:
     def __init__(self, results: list[EvaluationResult]):
         self.results = results
-        self.received_trace = None
+        self.received_args = None
         self.call_count = 0
 
-    def evaluate(self, trace: EvaluationTrace, configuration=None) -> list[EvaluationResult]:
-        self.received_trace = trace
+    def evaluate(self, *args, **kwargs) -> list[EvaluationResult]:
+        self.received_args = args
         self.call_count += 1
         return list(self.results)
 
@@ -154,18 +147,19 @@ def test_e2e_success_path_two_capabilities():
         normalizer=normalizer,
         gate=gate,
     )
-    trace = _trace()
-    snapshot = replace(trace)
+    request = _request("exact_match", "correctness")
+    snapshot = {"exact_match": dict(request["exact_match"]), "correctness": dict(request["correctness"])}
     decision = runner.run(
-        trace,
+        request,
         EvaluationConfig(evaluations=["exact_match", "correctness"]),
     )
 
     assert exact_eval.call_count == 1
     assert correctness_eval.call_count == 1
-    assert exact_eval.received_trace is trace
-    assert correctness_eval.received_trace is trace
-    assert trace == snapshot
+    assert exact_eval.received_args == ("Paris", "Paris")
+    assert correctness_eval.received_args == ("Paris", "Paris")
+    assert request["exact_match"]["args"] == snapshot["exact_match"]["args"]
+    assert request["correctness"]["args"] == snapshot["correctness"]["args"]
 
     assert normalizer.received is not None
     assert [item.metric for item in normalizer.received] == ["exact_match", "correctness"]
@@ -202,7 +196,7 @@ def test_e2e_failure_path_one_policy_fails():
         gate=gate,
     )
     decision = runner.run(
-        _trace(),
+        _request("exact_match", "correctness"),
         EvaluationConfig(evaluations=["exact_match", "correctness"]),
     )
     assert decision.passed is False
@@ -231,7 +225,7 @@ def test_e2e_multi_result_evaluator_preserves_order_without_aggregation():
         normalizer=normalizer,
         gate=gate,
     )
-    decision = runner.run(_trace(), EvaluationConfig(evaluations=["bundle"]))
+    decision = runner.run(_request("bundle"), EvaluationConfig(evaluations=["bundle"]))
     assert [item.metric for item in normalizer.received] == ["metric_a", "metric_b"]
     assert [item.metric for item in gate.received] == ["metric_a", "metric_b"]
     assert [item.passed for item in decision.decisions] == [True, False]
@@ -240,7 +234,7 @@ def test_e2e_multi_result_evaluator_preserves_order_without_aggregation():
         assert not hasattr(decision, name)
 
 
-def test_e2e_empty_configuration_delegates_empty_decisions_to_gate():
+def test_e2e_empty_configuration_fails_closed_before_gate():
     evaluator = RecordingEvaluator([_result("correctness", 0.9)])
     gate = RecordingGate()
     runner = _wired_runner(
@@ -248,10 +242,12 @@ def test_e2e_empty_configuration_delegates_empty_decisions_to_gate():
         {"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.80)},
         gate=gate,
     )
-    decision = runner.run(_trace(), EvaluationConfig(evaluations=[]))
+    with pytest.raises(ValueError, match="at least one configured evaluation"):
+        runner.run(_request("correctness"), EvaluationConfig(evaluations=[]))
+
     assert evaluator.call_count == 0
-    assert gate.received == []
-    assert decision.passed is True
+    assert gate.received is None
+    assert runner.last_run is None
 
 
 def test_e2e_missing_evaluator_capability_fails_clearly():
@@ -261,7 +257,7 @@ def test_e2e_missing_evaluator_capability_fails_clearly():
         policies={"exact_match": QualityPolicy(metric="exact_match", operator=">=", threshold=1.0)},
     )
     with pytest.raises(KeyError, match="Unknown evaluation capability"):
-        runner.run(_trace(), EvaluationConfig(evaluations=["unknown_metric"]))
+        runner.run(_request("unknown_metric"), EvaluationConfig(evaluations=["unknown_metric"]))
 
 
 def test_e2e_missing_policy_fails_clearly():
@@ -271,22 +267,20 @@ def test_e2e_missing_policy_fails_clearly():
         names=("correctness",),
     )
     with pytest.raises(KeyError, match="No quality policy configured for metric"):
-        runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+        runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
 
 
-def test_e2e_trace_identity_and_immutability():
+def test_e2e_request_identity_and_immutability():
     evaluator = RecordingEvaluator([_result("correctness", 0.9)])
-    trace = _trace()
-    before = replace(trace)
+    request = _request("correctness")
+    before = {"correctness": {"args": list(request["correctness"]["args"]), "kwargs": {}}}
     runner = _wired_runner(
         {"correctness": evaluator},
         {"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.80)},
     )
-    runner.run(trace, EvaluationConfig(evaluations=["correctness"]))
-    assert evaluator.received_trace is trace
-    assert trace == before
-    assert trace.trace_id == "e2e-001"
-    assert trace.input == "What is the capital of France?"
+    runner.run(request, EvaluationConfig(evaluations=["correctness"]))
+    assert evaluator.received_args == ("Paris", "Paris")
+    assert request == before
 
 
 def test_e2e_result_integrity_through_normalization_and_policy():
@@ -304,7 +298,7 @@ def test_e2e_result_integrity_through_normalization_and_policy():
         {"correctness": policy},
         normalizer=RecordingNormalizer(),
     )
-    decision = runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+    decision = runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
     assert raw == snapshot
     assert raw.score == 0.90
     normalized = policy.received
@@ -322,9 +316,9 @@ def test_e2e_observable_pipeline_sequence():
     sequence: list[str] = []
 
     class SequencedEvaluator(RecordingEvaluator):
-        def evaluate(self, trace, configuration=None):
+        def evaluate(self, *args, **kwargs):
             sequence.append("evaluator")
-            return super().evaluate(trace, configuration)
+            return super().evaluate(*args, **kwargs)
 
     class SequencedNormalizer(RecordingNormalizer):
         def normalize_many(self, results):
@@ -358,7 +352,7 @@ def test_e2e_observable_pipeline_sequence():
         gate=SequencedGate(),
     )
     decision = runner.run(
-        _trace(),
+        _request("exact_match", "correctness"),
         EvaluationConfig(evaluations=["exact_match", "correctness"]),
     )
     assert sequence == [
@@ -389,7 +383,7 @@ def test_e2e_gate_consumes_policy_passed_not_recalculated_scores():
         {"correctness": AuthoritativePolicy()},
         gate=gate,
     )
-    decision = runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+    decision = runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
     assert gate.received[0].score == 0.95
     assert gate.received[0].threshold == 0.80
     assert gate.received[0].passed is False
@@ -411,18 +405,17 @@ def test_e2e_real_deterministic_evaluator_smoke_without_live_providers():
         policies={"exact_match": QualityPolicy(metric="exact_match", operator=">=", threshold=1.0)},
         gate=QualityGate(),
     )
-    passing = runner.run(_trace(), EvaluationConfig(evaluations=["exact_match"]))
+    passing = runner.run(
+        _request("exact_match"),
+        EvaluationConfig(evaluations=["exact_match"]),
+    )
     assert passing.passed is True
     assert passing.decisions[0].metric == "exact_match"
     assert passing.decisions[0].score == 1.0
 
-    failing_trace = EvaluationTrace(
-        trace_id="e2e-002",
-        scenario_type="qa",
-        input="What is the capital of France?",
-        output="Lyon",
-        expected="Paris",
+    failing = runner.run(
+        _request("exact_match", output="Lyon", expected="Paris"),
+        EvaluationConfig(evaluations=["exact_match"]),
     )
-    failing = runner.run(failing_trace, EvaluationConfig(evaluations=["exact_match"]))
     assert failing.passed is False
     assert failing.decisions[0].score == 0.0

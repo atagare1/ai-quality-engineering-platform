@@ -17,16 +17,24 @@ DEFAULT_METRIC_THRESHOLDS = {
     "context_precision": 0.8,
     "context_recall": 0.7,
     "faithfulness": 0.8,
+    "hallucination": 0.8,
     "answer_relevancy": 0.8,
     "factual_correctness": 0.8,
+    "contextual_relevancy": 0.8,
+    "contextual_precision": 0.8,
+    "contextual_recall": 0.7,
 }
 
 THRESHOLD_ENV_VARS = {
     "context_precision": "RAGAS_THRESHOLD_CONTEXT_PRECISION",
     "context_recall": "RAGAS_THRESHOLD_CONTEXT_RECALL",
     "faithfulness": "RAGAS_THRESHOLD_FAITHFULNESS",
+    "hallucination": "RAGAS_THRESHOLD_HALLUCINATION",
     "answer_relevancy": "RAGAS_THRESHOLD_ANSWER_RELEVANCY",
     "factual_correctness": "RAGAS_THRESHOLD_FACTUAL_CORRECTNESS",
+    "contextual_relevancy": "RAGAS_THRESHOLD_CONTEXTUAL_RELEVANCY",
+    "contextual_precision": "RAGAS_THRESHOLD_CONTEXTUAL_PRECISION",
+    "contextual_recall": "RAGAS_THRESHOLD_CONTEXTUAL_RECALL",
 }
 
 

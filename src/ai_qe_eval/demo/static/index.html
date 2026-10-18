@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI-QE Evaluation Demo</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #141a2d;
+      --panel-2: #1b2338;
+      --line: #2a3554;
+      --text: #e8edf7;
+      --muted: #93a0c2;
+      --accent: #6ea8ff;
+      --pass: #3dd68c;
+      --fail: #ff6b7a;
+      --active: #f5c16c;
+      --todo-bg: #fafafa;
+      --todo-text: #4d4d4d;
+      --todo-border: #ededed;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #1a2a55 0%, transparent 50%),
+        radial-gradient(900px 400px at 100% 0%, #1d1538 0%, transparent 45%),
+        var(--bg);
+      color: var(--text);
+      font: 15px/1.45 "Segoe UI", system-ui, sans-serif;
+    }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 24px auto 40px; }
+    header { margin-bottom: 18px; }
+    .kicker {
+      color: var(--accent);
+      letter-spacing: 0.14em;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    h1 { margin: 6px 0 8px; font-size: 28px; font-weight: 650; }
+    .sub { color: var(--muted); max-width: 760px; }
+    .pipeline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 18px 0 20px;
+    }
+    .pipe {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    .pipe.arrow { border: 0; background: transparent; color: var(--muted); padding: 7px 0; }
+    .controls { display: flex; gap: 10px; margin-bottom: 18px; }
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    .btn-pass { background: #1f6f4a; color: white; }
+    .btn-fail { background: #8a2d3a; color: white; }
+    .grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card h2 {
+      margin: 0;
+      padding: 14px 16px 0;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .todo {
+      background: var(--todo-bg);
+      color: var(--todo-text);
+      margin: 14px;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+    .todo h3 {
+      margin: 0;
+      padding: 18px 16px 12px;
+      text-align: center;
+      font-weight: 200;
+      font-size: 42px;
+      color: #b83f45;
+    }
+    .todo-input {
+      border-top: 1px solid var(--todo-border);
+      border-bottom: 1px solid var(--todo-border);
+      padding: 14px 16px;
+      color: #9a9a9a;
+      font-style: italic;
+    }
+    .todo ul { list-style: none; margin: 0; padding: 0; min-height: 88px; }
+    .todo li {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--todo-border);
+      font-size: 18px;
+    }
+    .todo .empty { padding: 22px 16px; color: #b0b0b0; }
+    .caption { padding: 0 16px 14px; color: var(--muted); font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 4px; }
+    th, td { padding: 10px 16px; text-align: left; }
+    th { color: var(--muted); font-size: 12px; font-weight: 600; }
+    tr + tr td { border-top: 1px solid var(--line); }
+    .badge {
+      display: inline-block;
+      min-width: 56px;
+      text-align: center;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .badge.pass { background: rgba(61, 214, 140, 0.16); color: var(--pass); }
+    .badge.fail { background: rgba(255, 107, 122, 0.16); color: var(--fail); }
+    .reason { color: var(--fail); font-size: 12px; padding: 0 16px 10px; }
+    .gate {
+      margin: 12px 16px 16px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: var(--panel-2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid var(--line);
+    }
+    .gate strong { font-size: 20px; }
+    .gate.pass { border-color: rgba(61, 214, 140, 0.45); }
+    .gate.fail { border-color: rgba(255, 107, 122, 0.45); }
+    .timeline { margin-top: 16px; }
+    .tools { padding: 8px 8px 12px; }
+    .tool {
+      display: grid;
+      grid-template-columns: 42px 1fr 28px;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 10px;
+      color: var(--muted);
+    }
+    .tool.active {
+      background: rgba(245, 193, 108, 0.12);
+      color: var(--active);
+    }
+    .tool.done { color: var(--text); }
+    .tool.err { color: var(--fail); }
+    .ord { font-variant-numeric: tabular-nums; color: var(--muted); }
+    .mark { text-align: right; font-weight: 800; }
+    .status { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+    .evidence-card { margin-top: 16px; }
+    .evidence {
+      margin: 14px 16px 16px;
+      padding: 12px 14px;
+      max-height: 220px;
+      overflow: auto;
+      background: #0d1220;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--text);
+      font: 12px/1.4 ui-monospace, Consolas, "Cascadia Mono", monospace;
+      white-space: pre;
+    }
+    .evidence.empty { color: var(--muted); white-space: normal; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="kicker">AI-QE Evaluation Platform</div>
+      <h1>Playwright MCP quality gate</h1>
+      <p class="sub">
+        Live <code>@playwright/mcp</code> stdio drives
+        <code>https://demo.playwright.dev/todomvc</code>. Each real
+        <code>on_tool_call</code> streams to the timeline, then EvaluationRunner
+        scores Tool Correctness, MCP Execution Health, and Final State.
+      </p>
+    </header>
+
+    <div class="pipeline" aria-label="Evaluation pipeline">
+      <span class="pipe">AI Agent</span><span class="pipe arrow">→</span>
+      <span class="pipe">Playwright MCP</span><span class="pipe arrow">→</span>
+      <span class="pipe">Captured Evidence</span><span class="pipe arrow">→</span>
+      <span class="pipe">Design A Request</span><span class="pipe arrow">→</span>
+      <span class="pipe">EvaluationRunner</span><span class="pipe arrow">→</span>
+      <span class="pipe">Evaluators</span><span class="pipe arrow">→</span>
+      <span class="pipe">Quality Gate</span>
+    </div>
+
+    <div class="controls">
+      <button class="btn-pass" id="run-pass" type="button">Run PASS — Buy milk</button>
+      <button class="btn-fail" id="run-fail" type="button">Run FAIL — Buy bread</button>
+    </div>
+    <p class="status" id="status">Idle. Choose a scenario.</p>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Application state</h2>
+        <div class="todo">
+          <h3>todos</h3>
+          <div class="todo-input">What needs to be done?</div>
+          <ul id="todos"><li class="empty">No items yet</li></ul>
+        </div>
+        <p class="caption" id="todo-caption">Expected final state: Buy milk</p>
+      </section>
+
+      <section class="card">
+        <h2>Evaluation results</h2>
+        <table>
+          <thead>
+            <tr><th>Evaluator</th><th>Score</th><th>Result</th></tr>
+          </thead>
+          <tbody id="results">
+            <tr><td colspan="3" style="color:var(--muted)">Waiting for EvaluationRunner…</td></tr>
+          </tbody>
+        </table>
+        <p class="reason" id="reason" hidden></p>
+        <div class="gate" id="gate">
+          <span>Quality Gate</span>
+          <strong id="gate-result">—</strong>
+        </div>
+      </section>
+    </div>
+
+    <section class="card evidence-card">
+      <h2>Live MCP Evidence</h2>
+      <p class="caption">Last <code>browser_snapshot</code> — accessibility YAML used by Final State (expected listitem: Buy milk)</p>
+      <pre class="evidence empty" id="evidence">No final snapshot yet</pre>
+    </section>
+
+    <section class="card timeline">
+      <h2>Playwright MCP timeline</h2>
+      <div class="tools" id="tools">
+        <div class="tool"><span></span><span>No MCP calls yet</span><span></span></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const toolsEl = document.getElementById("tools");
+    const resultsEl = document.getElementById("results");
+    const todosEl = document.getElementById("todos");
+    const evidenceEl = document.getElementById("evidence");
+    const reasonEl = document.getElementById("reason");
+    const gateEl = document.getElementById("gate");
+    const gateResult = document.getElementById("gate-result");
+    const buttons = [document.getElementById("run-pass"), document.getElementById("run-fail")];
+    let source = null;
+    let activeRow = null;
+
+    function setBusy(busy) {
+      buttons.forEach((b) => { b.disabled = busy; });
+    }
+
+    function resetView() {
+      toolsEl.innerHTML = "";
+      resultsEl.innerHTML = `<tr><td colspan="3" style="color:var(--muted)">Running EvaluationRunner…</td></tr>`;
+      todosEl.innerHTML = `<li class="empty">Executing MCP tools…</li>`;
+      evidenceEl.className = "evidence empty";
+      evidenceEl.textContent = "Waiting for final browser_snapshot…";
+      reasonEl.hidden = true;
+      gateEl.className = "gate";
+      gateResult.textContent = "—";
+      activeRow = null;
+    }
+
+    function completeActive() {
+      if (!activeRow) return;
+      activeRow.classList.remove("active");
+      if (!activeRow.classList.contains("err")) activeRow.classList.add("done");
+      activeRow = null;
+    }
+
+    function addTool(event) {
+      completeActive();
+      const row = document.createElement("div");
+      row.className = "tool active" + (event.ok ? "" : " err");
+      row.innerHTML =
+        `<span class="ord">[${event.order}]</span>` +
+        `<span>${event.name}</span>` +
+        `<span class="mark">${event.ok ? "✓" : "✗"}</span>`;
+      toolsEl.appendChild(row);
+      activeRow = row;
+      window.setTimeout(completeActive, 280);
+    }
+
+    function renderEvaluation(payload) {
+      completeActive();
+      if (!payload.todos.length) {
+        todosEl.innerHTML = `<li class="empty">No items</li>`;
+      } else {
+        todosEl.innerHTML = payload.todos.map((t) => `<li>${t}</li>`).join("");
+      }
+      const snapshot = payload.final_snapshot || "";
+      if (snapshot) {
+        evidenceEl.className = "evidence";
+        evidenceEl.textContent = snapshot;
+      } else {
+        evidenceEl.className = "evidence empty";
+        evidenceEl.textContent = "No final browser_snapshot evidence.";
+      }
+      resultsEl.innerHTML = payload.evaluators.map((row) =>
+        `<tr>
+          <td>${row.evaluator}</td>
+          <td>${row.score}</td>
+          <td><span class="badge ${row.passed ? "pass" : "fail"}">${row.result}</span></td>
+        </tr>`
+      ).join("");
+      const failed = payload.evaluators.find((row) => !row.passed && row.reason);
+      if (failed) {
+        reasonEl.hidden = false;
+        reasonEl.textContent = failed.reason;
+      }
+      gateEl.className = "gate " + (payload.gate.passed ? "pass" : "fail");
+      gateResult.textContent = payload.gate.result;
+      gateResult.className = payload.gate.passed ? "badge pass" : "badge fail";
+    }
+
+    function run(scenario) {
+      if (source) source.close();
+      setBusy(true);
+      resetView();
+      statusEl.textContent = scenario === "pass"
+        ? "Running PASS: typing Buy milk…"
+        : "Running FAIL: typing Buy bread…";
+      source = new EventSource("/api/run?scenario=" + encodeURIComponent(scenario));
+      source.addEventListener("tool", (e) => addTool(JSON.parse(e.data)));
+      source.addEventListener("evaluation", (e) => {
+        renderEvaluation(JSON.parse(e.data));
+        statusEl.textContent = "EvaluationRunner finished.";
+      });
+      source.addEventListener("done", () => {
+        source.close();
+        source = null;
+        setBusy(false);
+      });
+      source.addEventListener("error", (e) => {
+        if (e.data) {
+          const payload = JSON.parse(e.data);
+          statusEl.textContent = payload.message || "Demo failed.";
+        }
+        if (source) source.close();
+        source = null;
+        setBusy(false);
+      });
+    }
+
+    document.getElementById("run-pass").onclick = () => run("pass");
+    document.getElementById("run-fail").onclick = () => run("fail");
+  </script>
+</body>
+</html>

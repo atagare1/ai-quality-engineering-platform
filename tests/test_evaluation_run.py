@@ -1,6 +1,7 @@
 """Focused tests for P2-03 EvaluationRun.
 
 Does not import RAGAS, LangChain, HTTP helpers, or Phase 1 mapping.
+Stores request maps, not EvaluationTrace.
 """
 
 from __future__ import annotations
@@ -9,29 +10,12 @@ import ast
 from pathlib import Path
 
 from ai_qe_eval.domain.run import EvaluationRun
-from ai_qe_eval.domain.trace import EvaluationTrace
 
 _RUN_SOURCE = Path(__file__).resolve().parents[1] / "src" / "ai_qe_eval" / "domain" / "run.py"
 
 
-def _trace(
-    trace_id: str,
-    *,
-    input_value: str = "question",
-    output: str = "answer",
-    expected: str = "expected",
-    events=None,
-    **kwargs,
-) -> EvaluationTrace:
-    return EvaluationTrace(
-        trace_id=trace_id,
-        scenario_type="rag",
-        input=input_value,
-        output=output,
-        expected=expected,
-        events=events,
-        **kwargs,
-    )
+def _request(*pairs: tuple[str, tuple]) -> dict:
+    return {name: {"args": list(args), "kwargs": {}} for name, args in pairs}
 
 
 def test_evaluation_run_can_be_created_with_run_id():
@@ -39,116 +23,98 @@ def test_evaluation_run_can_be_created_with_run_id():
     assert run.run_id == "run-001"
 
 
-def test_evaluation_run_can_contain_zero_traces():
-    run = EvaluationRun(run_id="run-001", traces=[])
-    assert run.traces == []
+def test_evaluation_run_can_contain_zero_requests():
+    run = EvaluationRun(run_id="run-001", requests=[])
+    assert run.requests == []
     defaulted = EvaluationRun(run_id="run-002")
-    assert defaulted.traces == []
+    assert defaulted.requests == []
 
 
-def test_evaluation_run_can_contain_one_trace():
-    trace = _trace("trace-001", input_value="question-1", output="answer-1", expected="expected-1")
-    run = EvaluationRun(run_id="run-001", traces=[trace])
-    assert len(run.traces) == 1
-    assert run.traces[0] is trace
-    assert run.traces[0].trace_id == "trace-001"
+def test_evaluation_run_can_contain_one_request():
+    request = _request(("exact_match", ("answer-1", "expected-1")))
+    run = EvaluationRun(run_id="run-001", requests=[request])
+    assert len(run.requests) == 1
+    assert run.requests[0] is request
+    assert run.requests[0]["exact_match"]["args"] == ["answer-1", "expected-1"]
 
 
-def test_evaluation_run_can_contain_multiple_traces_in_order():
-    trace1 = _trace("trace-001", input_value="question-1", output="answer-1", expected="expected-1")
-    trace2 = _trace("trace-002", input_value="question-2", output="answer-2", expected="expected-2")
-    run = EvaluationRun(run_id="run-001", traces=[trace1, trace2])
+def test_evaluation_run_can_contain_multiple_requests_in_order():
+    first = _request(("exact_match", ("answer-1", "expected-1")))
+    second = _request(("exact_match", ("answer-2", "expected-2")))
+    run = EvaluationRun(run_id="run-001", requests=[first, second])
     assert run.run_id == "run-001"
-    assert len(run.traces) == 2
-    assert run.traces[0].trace_id == "trace-001"
-    assert run.traces[1].trace_id == "trace-002"
-    assert [t.trace_id for t in run.traces] == ["trace-001", "trace-002"]
-
-
-def test_grouped_traces_retain_identity_and_values():
-    events = [{"type": "llm_call", "model": "example-model"}]
-    trace = _trace(
-        "trace-001",
-        input_value="question-1",
-        output="answer-1",
-        expected="expected-1",
-        retrieval=[{"page_content": "chunk"}],
-        events=events,
-        raw={"answer": "answer-1"},
-    )
-    run = EvaluationRun(run_id="run-001", traces=[trace])
-    grouped = run.traces[0]
-    assert grouped is trace
-    assert grouped.input == "question-1"
-    assert grouped.output == "answer-1"
-    assert grouped.expected == "expected-1"
-    assert grouped.retrieval == [{"page_content": "chunk"}]
-    assert grouped.events == events
-    assert grouped.raw == {"answer": "answer-1"}
-
-
-def test_serialization_preserves_nested_traces_and_events():
-    traces = [
-        _trace(
-            "trace-001",
-            input_value="question-1",
-            output="answer-1",
-            expected="expected-1",
-            events=[{"type": "llm_call", "model": "example-model"}],
-        ),
-        _trace(
-            "trace-002",
-            input_value="question-2",
-            output="answer-2",
-            expected="expected-2",
-            events=[
-                {"type": "tool_call", "tool": "example_tool", "arguments": {"x": 1}},
-                {"type": "tool_result", "output": "ok"},
-            ],
-        ),
+    assert len(run.requests) == 2
+    assert run.requests[0] is first
+    assert run.requests[1] is second
+    assert [item["exact_match"]["args"][0] for item in run.requests] == [
+        "answer-1",
+        "answer-2",
     ]
-    run = EvaluationRun(run_id="run-001", traces=traces)
+
+
+def test_grouped_requests_retain_identity_and_values():
+    request = {
+        "faithfulness": {
+            "args": ["question-1", "answer-1", [{"page_content": "chunk"}]],
+            "kwargs": {},
+        }
+    }
+    run = EvaluationRun(run_id="run-001", requests=[request])
+    grouped = run.requests[0]
+    assert grouped is request
+    assert grouped["faithfulness"]["args"][0] == "question-1"
+    assert grouped["faithfulness"]["args"][1] == "answer-1"
+    assert grouped["faithfulness"]["args"][2] == [{"page_content": "chunk"}]
+
+
+def test_serialization_preserves_nested_request_maps():
+    requests = [
+        _request(("exact_match", ("answer-1", "expected-1"))),
+        {
+            "tool_correctness": {
+                "args": [["observed"], ["expected"]],
+                "kwargs": {"input": "question-2"},
+            }
+        },
+    ]
+    run = EvaluationRun(run_id="run-001", requests=requests)
     restored = EvaluationRun.from_dict(run.to_dict())
     assert restored.run_id == "run-001"
-    assert [t.trace_id for t in restored.traces] == ["trace-001", "trace-002"]
-    assert restored.traces[0].input == "question-1"
-    assert restored.traces[0].output == "answer-1"
-    assert restored.traces[0].expected == "expected-1"
-    assert restored.traces[1].input == "question-2"
-    assert restored.traces[0].events == [{"type": "llm_call", "model": "example-model"}]
-    assert [event["type"] for event in restored.traces[1].events] == [
-        "tool_call",
-        "tool_result",
-    ]
-    assert restored.traces[1].events[0]["arguments"] == {"x": 1}
+    assert restored.requests[0]["exact_match"]["args"] == ["answer-1", "expected-1"]
+    assert restored.requests[1]["tool_correctness"]["args"] == [["observed"], ["expected"]]
+    assert restored.requests[1]["tool_correctness"]["kwargs"] == {"input": "question-2"}
 
 
-def test_default_trace_lists_are_not_shared_across_runs():
+def test_default_request_lists_are_not_shared_across_runs():
     run_a = EvaluationRun(run_id="run-a")
     run_b = EvaluationRun(run_id="run-b")
-    run_a.traces.append(_trace("trace-001"))
-    assert [t.trace_id for t in run_a.traces] == ["trace-001"]
-    assert run_b.traces == []
-    assert run_a.traces is not run_b.traces
+    run_a.requests.append(_request(("exact_match", ("answer-1",))))
+    assert run_a.requests[0]["exact_match"]["args"] == ["answer-1"]
+    assert run_b.requests == []
+    assert run_a.requests is not run_b.requests
 
 
-def test_run_does_not_duplicate_trace_semantic_fields():
-    payload = EvaluationRun(run_id="run-001", traces=[_trace("trace-001")]).to_dict()
-    assert "input" not in payload
-    assert "output" not in payload
-    assert "expected" not in payload
-    assert "retrieval" not in payload
-    assert "events" not in payload
-    assert payload["traces"][0]["input"] == "question"
+def test_run_does_not_duplicate_request_payload_fields():
+    payload = EvaluationRun(
+        run_id="run-001",
+        requests=[_request(("exact_match", ("answer", "expected")))],
+    ).to_dict()
+    assert "args" not in payload
+    assert "kwargs" not in payload
+    assert payload["requests"][0]["exact_match"]["args"] == ["answer", "expected"]
 
 
 def test_run_module_does_not_import_vendor_or_transport_packages():
     tree = ast.parse(_RUN_SOURCE.read_text(encoding="utf-8"))
+    imported: set[str] = set()
     imported_roots: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            imported_roots.update(alias.name.split(".", 1)[0] for alias in node.names)
+            names = [alias.name for alias in node.names]
+            imported.update(names)
+            imported_roots.update(name.split(".", 1)[0] for name in names)
         elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
             imported_roots.add(node.module.split(".", 1)[0])
     forbidden = {
         "ragas",
@@ -165,3 +131,4 @@ def test_run_module_does_not_import_vendor_or_transport_packages():
         "uuid",
     }
     assert forbidden.isdisjoint(imported_roots)
+    assert "ai_qe_eval.domain.trace" not in imported

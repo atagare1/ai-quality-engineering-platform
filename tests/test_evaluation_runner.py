@@ -1,11 +1,13 @@
 """Focused tests for P2-14 Thin Evaluation Runner.
 
 Orchestration only. No live RAGAS or DeepEval providers.
+Uses capability-keyed request maps. Does not construct EvaluationTrace.
 """
 
 from __future__ import annotations
 
 import ast
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -14,7 +16,6 @@ import pytest
 from ai_qe_eval.domain.config import EvaluationConfig
 from ai_qe_eval.domain.registry import EvaluationCapability, EvaluationRegistry
 from ai_qe_eval.domain.result import EvaluationResult
-from ai_qe_eval.domain.trace import EvaluationTrace
 from ai_qe_eval.gate.quality_gate import GateDecision, QualityGate
 from ai_qe_eval.normalization.result_normalizer import normalize_many
 from ai_qe_eval.policy.quality_policy import PolicyDecision, QualityPolicy
@@ -29,16 +30,12 @@ _RUNNER_SOURCE = (
 )
 
 
-def _trace(**overrides) -> EvaluationTrace:
-    payload = {
-        "trace_id": "trace-1",
-        "scenario_type": "single_turn",
-        "input": "question",
-        "output": "answer",
-        "expected": "answer",
-    }
-    payload.update(overrides)
-    return EvaluationTrace(**payload)
+def _payload(*args, **kwargs) -> dict:
+    return {"args": list(args), "kwargs": dict(kwargs)}
+
+
+def _request(*names: str) -> dict[str, dict]:
+    return {name: _payload("question") for name in names}
 
 
 def _result(metric: str, score: float, evaluator: str = "fake") -> EvaluationResult:
@@ -54,11 +51,13 @@ class FakeEvaluator:
     def __init__(self, results: list[EvaluationResult] | None = None, error: Exception | None = None):
         self.results = results if results is not None else [_result("correctness", 0.9)]
         self.error = error
-        self.received_trace = None
+        self.received_args = None
+        self.received_kwargs = None
         self.call_count = 0
 
-    def evaluate(self, trace: EvaluationTrace, configuration=None) -> list[EvaluationResult]:
-        self.received_trace = trace
+    def evaluate(self, *args, **kwargs) -> list[EvaluationResult]:
+        self.received_args = args
+        self.received_kwargs = kwargs
         self.call_count += 1
         if self.error is not None:
             raise self.error
@@ -146,22 +145,23 @@ def test_single_evaluator_end_to_end_pass():
         evaluators={"correctness": evaluator},
         policies={"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8)},
     )
-    decision = runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+    decision = runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
     assert isinstance(decision, GateDecision)
     assert decision.passed is True
-    assert evaluator.received_trace is not None
+    assert evaluator.received_args == ("question",)
 
 
-def test_evaluator_receives_the_exact_trace():
+def test_evaluator_receives_the_exact_request_arguments():
     evaluator = FakeEvaluator()
-    trace = _trace()
+    request = {"correctness": _payload("Paris", "Paris")}
     runner = EvaluationRunner(
         registry=_registry("correctness"),
         evaluators={"correctness": evaluator},
         policies={"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8)},
     )
-    runner.run(trace, EvaluationConfig(evaluations=["correctness"]))
-    assert evaluator.received_trace is trace
+    runner.run(request, EvaluationConfig(evaluations=["correctness"]))
+    assert evaluator.received_args == ("Paris", "Paris")
+    assert evaluator.received_kwargs == {}
 
 
 def test_evaluation_config_controls_which_capability_runs():
@@ -175,7 +175,10 @@ def test_evaluation_config_controls_which_capability_runs():
             "correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8),
         },
     )
-    runner.run(_trace(), EvaluationConfig(evaluations=["faithfulness"]))
+    runner.run(
+        _request("faithfulness", "correctness"),
+        EvaluationConfig(evaluations=["faithfulness"]),
+    )
     assert first.call_count == 1
     assert second.call_count == 0
 
@@ -188,9 +191,9 @@ def test_multiple_evaluators_execute_in_configuration_order():
             super().__init__(results)
             self.name = name
 
-        def evaluate(self, trace, configuration=None):
+        def evaluate(self, *args, **kwargs):
             order.append(self.name)
-            return super().evaluate(trace, configuration)
+            return super().evaluate(*args, **kwargs)
 
     first = OrderedEvaluator("faithfulness", [_result("faithfulness", 0.95)])
     second = OrderedEvaluator("correctness", [_result("correctness", 0.88)])
@@ -209,7 +212,7 @@ def test_multiple_evaluators_execute_in_configuration_order():
         },
     )
     decision = runner.run(
-        _trace(),
+        _request("faithfulness", "correctness", "exact_match"),
         EvaluationConfig(evaluations=["correctness", "faithfulness", "exact_match"]),
     )
     assert order == ["correctness", "faithfulness", "exact_match"]
@@ -235,7 +238,7 @@ def test_multiple_results_from_one_evaluator_are_preserved():
             "answer_relevancy": QualityPolicy(metric="answer_relevancy", operator=">=", threshold=0.8),
         },
     )
-    decision = runner.run(_trace(), EvaluationConfig(evaluations=["rag_bundle"]))
+    decision = runner.run(_request("rag_bundle"), EvaluationConfig(evaluations=["rag_bundle"]))
     assert [item.metric for item in decision.decisions] == [
         "faithfulness",
         "answer_relevancy",
@@ -253,7 +256,7 @@ def test_results_are_passed_through_normalizer():
         policies={"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8)},
         normalizer=normalizer,
     )
-    runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+    runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
     assert normalizer.received is not None
     assert normalizer.received[0] is raw
 
@@ -268,7 +271,7 @@ def test_policy_receives_normalized_result():
         policies={"correctness": policy},
         normalizer=normalizer,
     )
-    runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+    runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
     assert policy.received is not None
     assert policy.received is not raw
     assert policy.received.score == 0.9
@@ -290,7 +293,7 @@ def test_quality_gate_receives_complete_policy_decisions():
         gate=gate,
     )
     returned = runner.run(
-        _trace(),
+        _request("faithfulness", "correctness"),
         EvaluationConfig(evaluations=["faithfulness", "correctness"]),
     )
     assert gate.received is not None
@@ -306,7 +309,7 @@ def test_missing_evaluator_capability_in_registry_raises_key_error():
         policies={"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8)},
     )
     with pytest.raises(KeyError, match="Unknown evaluation capability"):
-        runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+        runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
 
 
 def test_missing_wired_evaluator_instance_raises_key_error():
@@ -316,7 +319,18 @@ def test_missing_wired_evaluator_instance_raises_key_error():
         policies={"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8)},
     )
     with pytest.raises(KeyError, match="evaluator instance"):
-        runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+        runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
+
+
+def test_missing_request_payload_raises_key_error():
+    runner = EvaluationRunner(
+        registry=_registry("correctness"),
+        evaluators={"correctness": FakeEvaluator()},
+        policies={"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8)},
+    )
+    with pytest.raises(KeyError, match="No request payload for capability"):
+        runner.run({}, EvaluationConfig(evaluations=["correctness"]))
+    assert runner.last_run is None
 
 
 def test_missing_policy_raises_key_error():
@@ -326,7 +340,7 @@ def test_missing_policy_raises_key_error():
         policies={},
     )
     with pytest.raises(KeyError, match="quality policy"):
-        runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+        runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
 
 
 def test_evaluator_exception_propagates():
@@ -336,7 +350,7 @@ def test_evaluator_exception_propagates():
         policies={"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8)},
     )
     with pytest.raises(RuntimeError, match="evaluator failed"):
-        runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+        runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
 
 
 def test_policy_exception_propagates():
@@ -346,7 +360,7 @@ def test_policy_exception_propagates():
         policies={"correctness": FakePolicy(error=RuntimeError("policy failed"))},
     )
     with pytest.raises(RuntimeError, match="policy failed"):
-        runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+        runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
 
 
 def test_no_score_aggregation_or_threshold_logic_in_runner():
@@ -362,17 +376,16 @@ def test_no_score_aggregation_or_threshold_logic_in_runner():
     )
     for snippet in forbidden_snippets:
         assert snippet not in source
-    decision = _runner().run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+    decision = _runner().run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
     for name in ("average_score", "overall_score", "weighted_score"):
         assert not hasattr(decision, name)
 
 
-def test_trace_is_not_mutated():
-    trace = _trace(output="original", expected="original")
-    snapshot = replace(trace)
-    _runner().run(trace, EvaluationConfig(evaluations=["correctness"]))
-    assert trace == snapshot
-    assert trace.output == "original"
+def test_request_is_not_mutated():
+    request = {"correctness": _payload("original")}
+    snapshot = deepcopy(request)
+    _runner().run(request, EvaluationConfig(evaluations=["correctness"]))
+    assert request == snapshot
 
 
 def test_evaluation_result_is_not_mutated():
@@ -383,12 +396,12 @@ def test_evaluation_result_is_not_mutated():
         evaluators={"correctness": FakeEvaluator([raw])},
         policies={"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8)},
     )
-    runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+    runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
     assert raw == snapshot
     assert raw.score == 0.9
 
 
-def test_empty_config_delegates_to_gate_without_running_evaluators():
+def test_empty_config_fails_before_evaluator_or_gate_execution():
     evaluator = FakeEvaluator()
     gate = FakeGate()
     runner = EvaluationRunner(
@@ -397,10 +410,12 @@ def test_empty_config_delegates_to_gate_without_running_evaluators():
         policies={"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8)},
         gate=gate,
     )
-    decision = runner.run(_trace(), EvaluationConfig(evaluations=[]))
+    with pytest.raises(ValueError, match="at least one configured evaluation"):
+        runner.run(_request("correctness"), EvaluationConfig(evaluations=[]))
+
     assert evaluator.call_count == 0
-    assert gate.received == []
-    assert decision.passed is True
+    assert gate.received is None
+    assert runner.last_run is None
 
 
 def test_end_to_end_failure_case():
@@ -409,7 +424,7 @@ def test_end_to_end_failure_case():
         evaluators={"correctness": FakeEvaluator([_result("correctness", 0.7)])},
         policies={"correctness": QualityPolicy(metric="correctness", operator=">=", threshold=0.8)},
     )
-    decision = runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
+    decision = runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
     assert decision.passed is False
     assert decision.decisions[0].score == 0.7
     assert decision.decisions[0].passed is False
@@ -436,8 +451,8 @@ def test_spy_delegation_does_not_implement_component_logic():
         normalizer=normalizer,
         gate=gate,
     )
-    returned = runner.run(_trace(), EvaluationConfig(evaluations=["correctness"]))
-    assert evaluator.received_trace is not None
+    returned = runner.run(_request("correctness"), EvaluationConfig(evaluations=["correctness"]))
+    assert evaluator.received_args is not None
     assert normalizer.received is not None
     assert policy.received is not None
     assert gate.received is not None
@@ -446,12 +461,16 @@ def test_spy_delegation_does_not_implement_component_logic():
 
 def test_runner_module_has_no_vendor_or_concrete_evaluator_imports():
     tree = ast.parse(_RUNNER_SOURCE.read_text(encoding="utf-8"))
+    imported: set[str] = set()
     imported_roots: set[str] = set()
     imported_modules: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            imported_roots.update(alias.name.split(".", 1)[0] for alias in node.names)
+            names = [alias.name for alias in node.names]
+            imported.update(names)
+            imported_roots.update(name.split(".", 1)[0] for name in names)
         elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
             imported_roots.add(node.module.split(".", 1)[0])
             imported_modules.add(node.module)
     forbidden = {"ragas", "deepeval", "langchain", "openai", "pytest"}
@@ -460,3 +479,4 @@ def test_runner_module_has_no_vendor_or_concrete_evaluator_imports():
     assert "ai_qe_eval.evaluators.ragas" not in imported_modules
     assert "ai_qe_eval.evaluators.deepeval" not in imported_modules
     assert "ai_qe_eval.evaluators.deterministic" not in imported_modules
+    assert "ai_qe_eval.domain.trace" not in imported

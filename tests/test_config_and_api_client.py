@@ -74,16 +74,24 @@ def test_metric_threshold_defaults_match_historical_poc(monkeypatch):
         "RAGAS_THRESHOLD_CONTEXT_PRECISION",
         "RAGAS_THRESHOLD_CONTEXT_RECALL",
         "RAGAS_THRESHOLD_FAITHFULNESS",
+        "RAGAS_THRESHOLD_HALLUCINATION",
         "RAGAS_THRESHOLD_ANSWER_RELEVANCY",
         "RAGAS_THRESHOLD_FACTUAL_CORRECTNESS",
+        "RAGAS_THRESHOLD_CONTEXTUAL_RELEVANCY",
+        "RAGAS_THRESHOLD_CONTEXTUAL_PRECISION",
+        "RAGAS_THRESHOLD_CONTEXTUAL_RECALL",
     ):
         monkeypatch.delenv(env_name, raising=False)
 
     assert metric_threshold("context_precision") == 0.8
     assert metric_threshold("context_recall") == 0.7
     assert metric_threshold("faithfulness") == 0.8
+    assert metric_threshold("hallucination") == 0.8
     assert metric_threshold("answer_relevancy") == 0.8
     assert metric_threshold("factual_correctness") == 0.8
+    assert metric_threshold("contextual_relevancy") == 0.8
+    assert metric_threshold("contextual_precision") == 0.8
+    assert metric_threshold("contextual_recall") == 0.7
 
 
 def test_metric_threshold_is_configurable(monkeypatch):

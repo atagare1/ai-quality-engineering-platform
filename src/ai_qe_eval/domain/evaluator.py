@@ -2,10 +2,14 @@
 
 Synchronous, evaluator-agnostic invocation:
 
-    evaluate(trace, configuration=None) -> list[EvaluationResult]
+    evaluate(*args, **kwargs) -> list[EvaluationResult]
 
-Configuration is opaque. Thresholds, PASS/FAIL, registry, adapters,
-and concrete evaluators are deferred.
+Evidence arguments are evaluator-specific. configuration=None remains an
+optional convention; this protocol does not require it. The protocol only
+guarantees evaluate(...) -> list[EvaluationResult].
+
+Thresholds, PASS/FAIL, registry, adapters, Runner invocation shape, and
+concrete evaluators are deferred.
 """
 
 from __future__ import annotations
@@ -13,14 +17,9 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from ai_qe_eval.domain.result import EvaluationResult
-from ai_qe_eval.domain.trace import EvaluationTrace
 
 
 @runtime_checkable
 class Evaluator(Protocol):
-    def evaluate(
-        self,
-        trace: EvaluationTrace,
-        configuration: Any | None = None,
-    ) -> list[EvaluationResult]:
+    def evaluate(self, *args: Any, **kwargs: Any) -> list[EvaluationResult]:
         ...

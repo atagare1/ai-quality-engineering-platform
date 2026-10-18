@@ -1,4 +1,16 @@
 .env
+.venv/
+.deepeval/
 __pycache__/
 .pytest_cache/
 *.pyc
+.playwright-mcp/
+spikes/**/artifacts/
+demos/**/recordings/
+demos/**/audio/
+demos/**/output/
+demos/**/logs/
+demos/**/generated/timeline.json
+demos/**/generated/timeline.prev.json
+demos/**/generated/captions.*
+demos/**/generated/cues.json
