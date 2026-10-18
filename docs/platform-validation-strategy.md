@@ -99,7 +99,7 @@ Already proven with doubles or local deterministic code (do not treat as live-pr
 - Multiple `EvaluationResult`s from one evaluator.
 - Normalize before policy; policy owns threshold; gate uses `passed` only.
 - Missing capability / missing instance / missing policy → `KeyError`.
-- Empty `EvaluationConfig` → no evaluators, `gate.evaluate([])` → PASS.
+- Empty `EvaluationConfig.evaluations` → `EvaluationRunner` raises `ValueError` (`tests/test_evaluation_runner.py` `test_empty_config_fails_before_evaluator_or_gate_execution`). A direct `QualityGate.evaluate([])` call still PASSes.
 - `run()` records `last_run`. `run_many` keeps per-trace groups; empty list → `ValueError`.
 - Synthetic PASS and FAIL for policy and gate.
 
@@ -226,7 +226,7 @@ There is no combined score across the four SUT paths.
 | Phase 1 401 on OpenRouter | Full `python -m pytest` stays red unless those unmarked tests skip or use a matching Phase 1 host. Do not silently rewrite Phase 1 defaults. |
 | Historical RAGAS Faithfulness judge block | A live RAG path can extract successfully and still produce no score. Record `JUDGE_BLOCKED / NOT SCORED`, not FAIL `0.0`. Do not overwrite the reported Together AI pass with that history. |
 | Chatbot G-Eval 0.6 vs 0.8 | Connectivity and tracing can succeed while the gate fails. Do not lower the 0.80 threshold or skip the test to go green. |
-| Empty config → gate PASS | A miswired CI job with `evaluations=[]` would pass; JUnit `--min-tests` is the collection/skip safeguard, not a substitute for `QualityGate`. |
+| Empty runner config vs empty gate | `EvaluationRunner` raises if `evaluations` is empty. A direct `QualityGate.evaluate([])` call still PASSes. JUnit `--min-tests` is a collection/skip safeguard; it does not establish semantic quality and is not a substitute for `QualityGate`. |
 | No combined platform score | Four path gates and five live jobs must stay independent. |
 
 ---

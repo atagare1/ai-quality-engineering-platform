@@ -116,7 +116,7 @@ Isolation means a failure is attributed to the layer that actually failed:
 | Extraction | Capture could not build a request (missing root input/output, unset session). No score is invented. |
 | Judge | Historical OpenRouter RAGAS Faithfulness raised `LLMDidNotFinishException` after a successful RAG HTTP 200. **JUDGE_BLOCKED / NOT SCORED** — not FAIL `0.0`, not an RAG application failure. The current Together AI RAGAS suite is a separate, reported-pass path. |
 
-Fail-closed: any `PolicyDecision.passed is False` fails that path’s `QualityGate`. A missing score is not coerced to `0.0`. An empty decision list currently passes (see limitations).
+Fail-closed: any `PolicyDecision.passed is False` fails that path’s `QualityGate`. A missing score is not coerced to `0.0`. A direct `QualityGate.evaluate([])` call currently passes. `EvaluationRunner` no longer reaches the gate with an empty `EvaluationConfig` (it raises `ValueError`).
 
 ---
 
@@ -238,7 +238,7 @@ Documented in README; not defects to paper over. Outcomes below are **reported**
 * An earlier OpenRouter RAGAS Faithfulness attempt was **JUDGE_BLOCKED / NOT SCORED**. The current Together AI RAGAS suite is reported as passed and is a different judge path.
 * Agent GENERATION G-Eval and non-faithfulness RAG maps are unit-tested only.
 * Remaining Phase 1 RAGAS metrics have no Phase 2 adapter.
-* `QualityGate` is not a CI plugin. Live jobs fail on pytest plus JUnit collection/skip minima. Empty decision list still passes in-process — a miswired empty config would look green.
+* `QualityGate` is not a CI plugin. Live jobs fail on pytest plus JUnit collection/skip minima. Those minima prove tests executed; they do not establish semantic quality. `EvaluationRunner` raises if `evaluations` is empty. A direct `QualityGate.evaluate([])` call still passes.
 * No persistence, lineage, or dashboard. `EvaluationRun.to_dict` exists; nothing aggregates separate SUT runs.
 * CLI/web do not run RAG or Langfuse.
 * Historical Phase 1 root tests remain a second path and have previously 401'd on OpenRouter. They are not this architecture.

@@ -10,7 +10,9 @@ Playwright MCP is the interactive CLI/web flagship demo. External RAG, Langfuse 
 
 Package: [`src/ai_qe_eval`](src/ai_qe_eval). Historical RAGAS POC scripts remain in the repo as a baseline; they are not the foundation for new work.
 
-Technical companion: [Architecture](docs/architecture.md). Validation strategy: [Platform validation strategy](docs/platform-validation-strategy.md). Reported live outcomes in this README supersede older matrix rows in the strategy document.
+License: [Apache License 2.0](LICENSE). Validated CI Python version: **3.11** (`.github/workflows/tests.yml` and `.github/workflows/live-tests.yml`).
+
+Technical companion: [Architecture](docs/architecture.md). Validation strategy: [Platform validation strategy](docs/platform-validation-strategy.md). Reported live outcomes in this README supersede older matrix rows in the strategy document. This platform has **no combined cross-metric or cross-suite score**.
 
 | Layer | What it is | Status |
 |---|---|---|
@@ -90,7 +92,7 @@ flowchart TD
 
 ## Quick Start
 
-Install from the repository root, then run the scripted MCP demo. The CLI does not start `@playwright/mcp`, a browser, Langfuse, the external RAG API, or the user-feedback chatbot. RAG and Langfuse SUTs are not CLI scenarios.
+Install from the repository root. The first reproducible walkthrough is the **offline** pytest suite. `pytest.ini` applies `-m "not live"` and `pythonpath = src`. Push/PR CI runs the same command (`.github/workflows/tests.yml`). Offline tests do not require Together, OpenRouter, or Langfuse credentials.
 
 ```bash
 git clone https://github.com/atagare1/llm-rag-evaluation-ragas.git
@@ -99,14 +101,17 @@ python -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 
-PYTHONPATH=src python -m ai_qe_eval
-PYTHONPATH=src python -m ai_qe_eval --scenario fail
-PYTHONPATH=src python -m ai_qe_eval.demo.web
+pytest tests -q
+pytest tests/test_cli.py tests/test_cli_mcp_p0_demo.py -q
 ```
 
-`python -m ai_qe_eval` is scripted (no browser). `python -m ai_qe_eval.demo.web` starts a local page that drives **live** Playwright MCP stdio against TodoMVC. Neither command runs the RAG demo or Langfuse.
+The CLI pytest files inject a Tool Correctness stub (`tests/test_cli.py`) and assert the scripted MCP P0 pass/fail report through `EvaluationRunner`. They are the verified existing demo of “tools pass, final state fails.”
 
-Exit codes for the CLI: QualityGate PASS = `0`, FAIL = `1`.
+`python -m ai_qe_eval` is a scripted (no browser) MCP demo. `cli.main()` does **not** inject that stub. Omitting `model` uses DeepEval’s default provider (`src/ai_qe_eval/cli.py` `build_p0_runner`). Do not treat the CLI as credential-free or as a verified offline walkthrough.
+
+`python -m ai_qe_eval.demo.web` starts a local page that drives **live** Playwright MCP stdio against TodoMVC and needs Node/`npx`. Live GitHub Actions suites and `pytest -m live` require external services and provider credentials (see [Live GitHub Actions suites](#live-github-actions-suites)).
+
+Exit codes for the CLI, when it is run: QualityGate PASS = `0`, FAIL = `1`.
 
 ### PASS — correct tools, healthy execution, expected final state
 
@@ -252,7 +257,7 @@ Repository secrets are never printed. Copy `.env.example` for local placeholders
 
 ### How to run offline tests
 
-Push/PR CI (`.github/workflows/tests.yml`) runs the deterministic suite:
+The offline command is `pytest tests -q`. Push/PR CI (`.github/workflows/tests.yml`) runs that command only. It does not run live suites and does not establish semantic quality of model judgments.
 
 ```bash
 pytest tests -q          # Phase 2 baseline (no root Phase 1 files; pytest.ini applies -m "not live")
@@ -260,7 +265,7 @@ pytest tests -q          # Phase 2 baseline (no root Phase 1 files; pytest.ini a
 
 `python -m pytest` also collects unmarked Phase 1 root tests. Those are not `@pytest.mark.live` and they are not `EvaluationRunner` tests. With an OpenRouter `OPENAI_BASE_URL` they have previously failed 401 (`Missing Authentication header`). That is a Phase 1 provider-auth mismatch, not a Phase 2 regression.
 
-Local live tests, when credentials are configured:
+Live suites need external services and provider credentials (Together, OpenRouter, and/or Langfuse, depending on the job). Local live tests, when those are configured:
 
 ```bash
 pytest -m live --override-ini="addopts=-p no:deepeval"
@@ -282,7 +287,7 @@ Each live job writes a JUnit XML file and then runs `.github/scripts/require_liv
 * any required test was skipped
 * executed (non-skipped) tests are fewer than the minimum
 
-A missing, skipped, or uncollected required live test cannot produce a false-green job. A real assertion failure (for example chatbot G-Eval below threshold) still fails pytest; the JUnit helper does not hide that.
+A missing, skipped, or uncollected required live test cannot produce a false-green job. A real assertion failure (for example chatbot G-Eval below threshold) still fails pytest; the JUnit helper does not hide that. These safeguards prove required tests **executed**. They do not establish semantic quality of LLM judgments, and they are not a combined platform score.
 
 ---
 
@@ -301,7 +306,13 @@ These go through capture helpers and `EvaluationRunner`. Playwright MCP is the C
 
 ## Validation
 
-Results in this section are **reported from prior runs**. They were not re-executed for this documentation update. Attribution of those live suite outcomes to commit `c095dd5` is **UNKNOWN / TO VERIFY**. Do not treat the table as a new live execution, and do not claim that the entire `live-tests` workflow passed.
+### Evidence classes
+
+* **Implemented:** Phase 2 evaluation core, capture helpers, listed adapters, scripted MCP CLI, five opt-in `live-tests.yml` jobs, and JUnit collection/skip gates. See [Implemented evaluators](#implemented-evaluators) and [Roadmap](#roadmap).
+* **Reported historical outcomes:** the live suite table below, the focused offline **38 passed** contract suite, the previously documented **392** Phase 2 baseline, chatbot G-Eval **0.6 vs 0.8**, and the earlier OpenRouter RAGAS judge-block. These were not re-executed for this documentation update and are **not** attributed to the current commit.
+* **Not implemented / unvalidated:** items under Roadmap “Not implemented / future”; live Langfuse Agent GENERATION G-Eval; remaining Phase 1 RAGAS metrics as Phase 2 adapters; any combined cross-metric score.
+
+Results in this section are **reported from prior runs**. They were not re-executed for this documentation update. Attribution of those live suite outcomes to commit `c095dd5` or to the current `phase3_code` tip is **UNKNOWN / TO VERIFY**. Do not treat the table as a new live execution. Do not claim that all live suites passed on the current commit, and do not claim that the entire `live-tests` workflow passed.
 
 ### Reported live suite outcomes
 
@@ -453,3 +464,15 @@ Domain, policy, gate, normalizer, and runner do not import RAGAS or DeepEval. Ad
 | Root `test_*.py` | Unmarked Phase 1 RAGAS. Collected by `python -m pytest`, not by `pytest tests -q`. Separate from the Phase 2 runner. |
 
 End-to-end deterministic tests prove delegation order (`evaluator` → `normalizer` → `policy` → `gate`). They are not live RAGAS, DeepEval-provider, Playwright MCP server, or Langfuse runs.
+
+### Third-party resources
+
+External SUTs, examples, and providers used by this platform are **not** part of this repository. This project’s [Apache-2.0 license](LICENSE) does not grant rights to third-party material. License and terms checks for the sources below are **unresolved** (**UNKNOWN / TO VERIFY**). Do not treat presence in this repo as permission to redistribute those systems.
+
+| Resource | Where referenced | Role |
+|---|---|---|
+| Rahul Shetty Academy RAG demo (`https://rahulshettyacademy.com/rag-llm/ask`) | `utils.py` `DEFAULT_RAG_API_URL` | External RAG SUT for live RAGAS paths and Phase 1 root tests (`conftest.py` `get_test_data`). Not owned or developed by this project. All rights remain with their respective owners. Use is subject to the applicable terms and permissions. |
+| Playwright TodoMVC (`https://demo.playwright.dev/todomvc`) | `src/ai_qe_eval/integrations/playwright_mcp.py` `TODO_MVC_URL` | Live/browser MCP target |
+| Official Playwright MCP package `@playwright/mcp@0.0.82` | `PLAYWRIGHT_MCP_PACKAGE` | MCP server started by live Playwright tests and `demo.web` |
+| Official Langfuse `applications/user-feedback` example at pinned SHA `77c0d4406ec7cffc211a21d98e2f43e0046a29ae` | `.github/workflows/live-tests.yml` `LANGFUSE_EXAMPLES_SHA` | Chatbot SUT cloned in CI only; not vendored here |
+| Together AI, OpenRouter, Langfuse | live job env and `.env.example` | Judge, inference, and tracing hosts |
